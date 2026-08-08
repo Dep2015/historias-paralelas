@@ -695,4 +695,31 @@ body::after {
     justify-content: center;
     text-align: center;
   }
+
+  /* Pantalla de exportar compacta: en un movil bajo, el cine + el panel de
+     descarga no cabian y los botones quedaban fuera de vista. Se recortan
+     espacios y tipografia, y el boton de exportar/descargar sube en el
+     orden visual para quedar SIEMPRE por encima del pliegue. */
+  .pantalla-exportar {
+    padding: var(--espacio-xs);
+    gap: var(--espacio-xs);
+  }
+
+  .pantalla-exportar__panel {
+    order: -1;
+  }
+
+  .historia-final {
+    padding: var(--espacio-xs);
+    gap: var(--espacio-xs);
+  }
+
+  .historia-final__controles {
+    gap: var(--espacio-xs);
+  }
+
+  .historia-final__controles .pixel-boton {
+    padding: 0.45rem 0.7rem;
+    font-size: 0.62rem;
+  }
 }

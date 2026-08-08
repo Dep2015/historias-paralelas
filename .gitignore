@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.log
+npm-debug.log*
+
+# Artefactos temporales de exportacion de video: por diseno nunca se versionan
+tmp/
+apps/api/tmp/
+
+.DS_Store
+.vscode/
+.idea/

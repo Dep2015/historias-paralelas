@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+dist
+**/dist
+.git
+.gitignore
+.env
+.env.local
+*.log
+tmp
+**/tmp
+.DS_Store
+README.md
+DECISIONS.md

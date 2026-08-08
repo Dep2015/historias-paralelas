@@ -1,0 +1,52 @@
+# =============================================================================
+# historia-paralela — orquestacion local
+# `docker compose up --build` deja la app en http://localhost:3000
+# =============================================================================
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: historia-paralela:latest
+    ports:
+      - "${PORT:-3000}:3000"
+    # required:false — un clon recien hecho levanta sin .env y cae a los
+    # valores por defecto (director simulado, sin Portal). Todo jugable.
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      FFMPEG_PATH: /usr/bin/ffmpeg
+      # En un solo contenedor el frontend es same-origin
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3000}
+    # tmpfs: los mp4 temporales viven en RAM y mueren con el contenedor.
+    # Refuerza la regla de oro "nada persiste" a nivel de infraestructura.
+    tmpfs:
+      - /app/tmp:size=512m,mode=1777
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/salud').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # OPCIONAL. Solo cache efimero (rate-limit distribuido si se escala a N replicas).
+  # Jamas guarda historias. Levantar con: docker compose --profile cache up
+  redis:
+    image: redis:7-alpine
+    profiles: ["cache"]
+    command: >
+      redis-server
+      --save ""
+      --appendonly no
+      --maxmemory 128mb
+      --maxmemory-policy allkeys-lru
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true

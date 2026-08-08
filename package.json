@@ -5,6 +5,7 @@
   "description": "Chat de cuentos colaborativo con IA directora y pixel art efimero",
   "license": "MIT",
   "workspaces": [
+    "packages/escena",
     "apps/web",
     "apps/api"
   ],
@@ -15,8 +16,8 @@
     "dev": "npm run dev --workspace=apps/api & npm run dev --workspace=apps/web",
     "dev:api": "npm run dev --workspace=apps/api",
     "dev:web": "npm run dev --workspace=apps/web",
-    "build": "npm run build --workspace=apps/web && npm run build --workspace=apps/api",
+    "build": "npm run build --workspace=packages/escena && npm run build --workspace=apps/web && npm run build --workspace=apps/api",
     "start": "npm run start --workspace=apps/api",
-    "typecheck": "npm run typecheck --workspace=apps/web && npm run typecheck --workspace=apps/api"
+    "typecheck": "npm run typecheck --workspace=packages/escena && npm run typecheck --workspace=apps/web && npm run typecheck --workspace=apps/api"
   }
 }

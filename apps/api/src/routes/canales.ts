@@ -33,7 +33,11 @@ rutasCanales.get(
 
 const esquemaCrear = z.object({
   canalId: z.string().optional(),
-  cupo: z.number().int().min(1).max(50).nullable(),
+  // Maximo 2: la experiencia esta pensada para duos. Ya no hay "ilimitado".
+  cupo: z.number().int().min(1).max(2),
+  // "vector" = escenas SVG estilo cuento animado (turnos de 40s);
+  // "pixel" = motor de escenas en datos (turnos de 20s).
+  estilo: z.enum(["pixel", "vector"]).default("pixel"),
 });
 
 rutasCanales.post(
@@ -51,7 +55,7 @@ rutasCanales.post(
 
     // Todavia no hay sesion (la sala se crea antes de que nadie "entre" con
     // su nombre): el creador queda anonimo hasta el primer POST .../entrar.
-    historiaStore.crear(canalId, cuerpo.cupo, randomUUID());
+    historiaStore.crear(canalId, cuerpo.cupo, randomUUID(), cuerpo.estilo);
 
     const resumen = historiaStore.resumen(canalId);
     if (!resumen) {

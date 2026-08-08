@@ -8,6 +8,8 @@ import type { EscenaSpec } from "@historia-paralela/escena";
 export type ModoHistoria = "realtime" | "snapshot";
 export type EstadoHistoria = "lobby" | "en_curso" | "terminada" | "exportada";
 export type RazonFin = "tiempo" | "botones" | "todos_pasaron" | null;
+/** pixel = motor de escenas en datos; vector = SVG estilo cuento animado. */
+export type EstiloEscena = "pixel" | "vector";
 
 export interface Participante {
   userId: string;
@@ -26,14 +28,18 @@ export interface Parrafo {
   /**
    * La escena EN DATOS, no una imagen: se dibuja por codigo con el motor
    * compartido (@historia-paralela/escena) y por eso puede animarse.
+   * Presente siempre, tambien en salas vectoriales (plan B del SVG).
    */
   escena: EscenaSpec;
+  /** Solo en salas "vector": SVG estilo cuento, saneado, con data-anim. */
+  svg?: string;
   creadoEn: number;
 }
 
 export interface ResumenCanal {
   canalId: string;
   cupo: number | null;
+  estilo: EstiloEscena;
   dentro: number;
   lleno: boolean;
   estado: EstadoHistoria;
@@ -57,6 +63,7 @@ export interface EstadoPublico {
   estado: EstadoHistoria;
   modo: ModoHistoria;
   cupo: number | null;
+  estilo: EstiloEscena;
   dentro: number;
   participantes: Participante[];
   parrafos: Parrafo[];

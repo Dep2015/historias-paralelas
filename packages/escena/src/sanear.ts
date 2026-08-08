@@ -1,5 +1,5 @@
-import { colorValido } from "./paleta.js";
-import { spriteValido } from "./sprites.js";
+import { colorValido, type NombreColor } from "./paleta.js";
+import { SPRITES, spriteValido, type SpriteDef } from "./sprites.js";
 import {
   ALTO,
   ANCHO,
@@ -105,19 +105,107 @@ function sanearElemento(bruto: unknown): Elemento | null {
         altura: acotar(num(o.altura, 14), 1, ALTO),
         aspereza: acotar(num(o.aspereza, 0.5), 0, 1),
       };
-    case "sprite":
+    case "sprite": {
+      const nombre = spriteValido(typeof o.nombre === "string" ? o.nombre : undefined);
       return {
         ...base,
         forma: "sprite",
-        nombre: spriteValido(typeof o.nombre === "string" ? o.nombre : undefined),
+        nombre,
         x: coordX(o.x, ANCHO / 2),
         y: coordY(o.y, ALTO * 0.8),
-        escala: Math.round(acotar(num(o.escala, 2), 1, MAX_ESCALA)),
+        escala: escalaAcotada(o.escala, SPRITES[nombre]),
         espejo: o.espejo === true,
       };
+    }
+    case "dibujo":
+      return sanearDibujo(o, base);
     default:
       return null;
   }
+}
+
+/** Limites del dibujo libre: mas alla de esto, o es ruido o es un ataque. */
+const DIBUJO_MAX_LADO = 24;
+const DIBUJO_MIN_PIXELES = 6;
+
+/** Tamano maximo EFECTIVO en pantalla (celdas), no solo escala nominal. */
+const MAX_ANCHO_EFECTIVO = 120;
+const MAX_ALTO_EFECTIVO = 70;
+
+/**
+ * La escala se acota por el tamano real del sprite, no con un tope fijo:
+ * escala 5 es razonable para una figura de 10 celdas pero convierte una
+ * ballena de 28 en un monstruo de 140 celdas que tapa la pantalla entera
+ * (paso con una escena real generada por la IA).
+ */
+function escalaAcotada(escalaCruda: unknown, def: SpriteDef): number {
+  const anchoSprite = def.filas[0]?.length ?? 1;
+  const altoSprite = def.filas.length || 1;
+  const topePorAncho = Math.floor(MAX_ANCHO_EFECTIVO / anchoSprite);
+  const topePorAlto = Math.floor(MAX_ALTO_EFECTIVO / altoSprite);
+  const tope = Math.max(1, Math.min(MAX_ESCALA, topePorAncho, topePorAlto));
+  return Math.round(acotar(num(escalaCruda, 2), 1, tope));
+}
+
+/**
+ * Valida un dibujo pixel a pixel hecho por la IA. Se corrige lo corregible
+ * (recortar filas largas, descartar colores invalidos de la leyenda) y solo
+ * se descarta el elemento si el resultado no dibujaria nada reconocible.
+ */
+function sanearDibujo(
+  o: Record<string, unknown>,
+  base: { color: ReturnType<typeof colorValido>; anim?: Animacion },
+): Elemento | null {
+  if (!Array.isArray(o.filas)) return null;
+
+  const filasCrudas = o.filas
+    .filter((fila): fila is string => typeof fila === "string")
+    .slice(0, DIBUJO_MAX_LADO)
+    .map((fila) => fila.slice(0, DIBUJO_MAX_LADO));
+
+  if (filasCrudas.length === 0) return null;
+
+  // Todas las filas al mismo ancho: el render asume rejilla rectangular.
+  const anchoMax = Math.max(...filasCrudas.map((fila) => fila.length));
+  if (anchoMax === 0) return null;
+  const filas = filasCrudas.map((fila) => fila.padEnd(anchoMax, "."));
+
+  // Leyenda: solo entradas de un caracter con color valido de la paleta.
+  const leyenda: Record<string, NombreColor> = {};
+  if (o.leyenda && typeof o.leyenda === "object") {
+    for (const [caracter, nombre] of Object.entries(o.leyenda as Record<string, unknown>)) {
+      if (caracter.length === 1 && caracter !== "." && typeof nombre === "string") {
+        leyenda[caracter] = colorValido(nombre);
+      }
+    }
+  }
+
+  // Un dibujo casi vacio (o cuyos caracteres no estan en la leyenda ni son
+  // #/S/L/A) no representa nada: mejor descartarlo y que el resto de la
+  // escena sobreviva, igual que hace el resto del saneador.
+  let pintables = 0;
+  for (const fila of filas) {
+    for (const caracter of fila) {
+      if (caracter === ".") continue;
+      if (caracter in leyenda || caracter === "#" || caracter === "S" || caracter === "L" || caracter === "A") {
+        pintables++;
+      }
+    }
+  }
+  if (pintables < DIBUJO_MIN_PIXELES) return null;
+
+  return {
+    ...base,
+    forma: "dibujo",
+    filas,
+    leyenda,
+    x: coordX(o.x, ANCHO / 2),
+    y: coordY(o.y, ALTO * 0.8),
+    // Mismo tope efectivo que los sprites del catalogo: un dibujo libre de
+    // 24 celdas a escala 6 tambien taparia la pantalla.
+    escala: escalaAcotada(o.escala, { filas }),
+    espejo: o.espejo === true,
+  };
 }
 
 export function sanearEscena(bruto: unknown): EscenaSpec {

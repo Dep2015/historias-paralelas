@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import type { SesionHistoria } from "../hooks/useHistorySession.js";
 import { useCountdown } from "../hooks/useCountdown.js";
 import { EscenaPixel } from "./EscenaPixel.js";
+import { EscenaVector } from "./EscenaVector.js";
 
 /**
  * Sala de escritura colaborativa: escena + leyenda de cine, historia
@@ -18,6 +19,13 @@ interface PropsSalaChat {
 const PAUSA_ENVIO_MS = 1500;
 // Puntuacion que en modo realtime se interpreta como fin de oracion.
 const FIN_ORACION = /[.!?]\s*$/;
+
+// Input de escritura con tope de tweet: 280 caracteres.
+const MAX_CARACTERES_FRASE = 280;
+// Umbrales del contador, estilo tweet: amarillo cuando se acerca al limite,
+// magenta cuando ya casi no queda margen.
+const UMBRAL_CONTADOR_ADVERTENCIA = 240;
+const UMBRAL_CONTADOR_LIMITE = 270;
 
 export function SalaChat({ sesion, miOrden, nombre }: PropsSalaChat): JSX.Element {
   const { estado, ventana, parrafos, desfaseMs, esMiTurno, ocupado, error, enviarFrase } = sesion;
@@ -80,14 +88,28 @@ export function SalaChat({ sesion, miOrden, nombre }: PropsSalaChat): JSX.Elemen
   const ultimoParrafo = parrafos[parrafos.length - 1];
   const participantes = estado?.participantes ?? [];
   const ordenEnCurso = ventana?.ordenEnCurso ?? null;
+  const esVector = estado?.estilo === "vector";
+
+  const largoBorrador = borrador.length;
+  const claseContador =
+    largoBorrador >= UMBRAL_CONTADOR_LIMITE
+      ? " sala-chat__contador--limite"
+      : largoBorrador >= UMBRAL_CONTADOR_ADVERTENCIA
+        ? " sala-chat__contador--advertencia"
+        : "";
 
   return (
     <div className="sala-chat">
       <div className="sala-chat__escena">
-        <EscenaPixel escena={ultimoParrafo?.escena ?? null} leyenda={ultimoParrafo?.narracion} />
+        {ultimoParrafo?.svg ? (
+          <EscenaVector svg={ultimoParrafo.svg} leyenda={ultimoParrafo.narracion} />
+        ) : (
+          <EscenaPixel escena={ultimoParrafo?.escena ?? null} leyenda={ultimoParrafo?.narracion} />
+        )}
       </div>
 
       <div className="sala-chat__input pixel-panel">
+        {esVector && <p className="sala-chat__badge-vector">VECTORIAL · turnos 40s</p>}
         <p className="sala-chat__estado-turno">
           {modoRealtime
             ? esMiTurno
@@ -101,6 +123,7 @@ export function SalaChat({ sesion, miOrden, nombre }: PropsSalaChat): JSX.Elemen
           <input
             className="pixel-input"
             value={borrador}
+            maxLength={MAX_CARACTERES_FRASE}
             onChange={(e) => manejarCambio(e.target.value)}
             onKeyDown={manejarTecla}
             disabled={ocupado}
@@ -117,7 +140,12 @@ export function SalaChat({ sesion, miOrden, nombre }: PropsSalaChat): JSX.Elemen
           </button>
         </div>
         {error && <p className="sala-chat__error">{error}</p>}
-        <p className="sala-chat__firma">Escribes como {nombre}</p>
+        <div className="sala-chat__pie-input">
+          <p className="sala-chat__firma">Escribes como {nombre}</p>
+          <p className={`sala-chat__contador${claseContador}`}>
+            {largoBorrador}/{MAX_CARACTERES_FRASE}
+          </p>
+        </div>
       </div>
 
       <div className="sala-chat__parrafos pixel-panel">

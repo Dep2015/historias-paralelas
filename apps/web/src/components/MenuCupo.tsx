@@ -1,24 +1,36 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { api, ErrorApi } from "../lib/api.js";
-import type { ResumenCanal } from "../lib/historia.js";
+import type { EstiloEscena, ResumenCanal } from "../lib/historia.js";
 
 /**
- * Formulario de entrada + lista de canales activos. El cupo NO se manda
- * "por si acaso": aqui es donde la persona lo decide antes de crear su
- * historia (o elige unirse a una ya abierta con el cupo que ya tiene).
+ * Formulario de entrada + lista de canales activos. El cupo y el estilo NO
+ * se mandan "por si acaso": aqui es donde la persona los decide antes de
+ * crear su historia (o elige unirse a una ya abierta, donde ambos ya los
+ * fijo quien la creo).
  */
 interface PropsMenuCupo {
-  onEntrar: (canalId: string, nombre: string, cupo: number | null) => Promise<void>;
+  onEntrar: (canalId: string, nombre: string, cupo: number, estilo: EstiloEscena) => Promise<void>;
   error: string | null;
   ocupado: boolean;
 }
 
-const OPCIONES_CUPO: ReadonlyArray<{ etiqueta: string; valor: number | null }> = [
+// Cupo maximo ahora es 2 (duos). Ya no existen las salas de 5/10/ilimitado.
+const OPCIONES_CUPO: ReadonlyArray<{ etiqueta: string; valor: number }> = [
   { etiqueta: "1", valor: 1 },
   { etiqueta: "2", valor: 2 },
-  { etiqueta: "5", valor: 5 },
-  { etiqueta: "10", valor: 10 },
-  { etiqueta: "ILIMITADO", valor: null },
+];
+
+const OPCIONES_ESTILO: ReadonlyArray<{ valor: EstiloEscena; titulo: string; descripcion: string }> = [
+  {
+    valor: "pixel",
+    titulo: "PIXEL",
+    descripcion: "Retro 16-bit · escenas dibujadas por el motor · turnos de 20s",
+  },
+  {
+    valor: "vector",
+    titulo: "VECTORIAL",
+    descripcion: "Cuento ilustrado animado · la IA dibuja cada escena · turnos de 40s",
+  },
 ];
 
 const MAX_NOMBRE = 24;
@@ -35,7 +47,8 @@ function generarCanalId(): string {
 export function MenuCupo({ onEntrar, error, ocupado }: PropsMenuCupo): JSX.Element {
   const [nombre, setNombre] = useState("");
   const [canalId, setCanalId] = useState("");
-  const [cupo, setCupo] = useState<number | null>(2);
+  const [cupo, setCupo] = useState<number>(2);
+  const [estilo, setEstilo] = useState<EstiloEscena>("pixel");
   const [canales, setCanales] = useState<ResumenCanal[]>([]);
   const [errorLista, setErrorLista] = useState<string | null>(null);
 
@@ -71,13 +84,15 @@ export function MenuCupo({ onEntrar, error, ocupado }: PropsMenuCupo): JSX.Eleme
     const nombreLimpio = nombre.trim().slice(0, MAX_NOMBRE);
     if (!nombreLimpio) return;
     const id = canalId.trim() || generarCanalId();
-    await onEntrar(id, nombreLimpio, cupo);
+    await onEntrar(id, nombreLimpio, cupo, estilo);
   }
 
   async function unirseA(resumen: ResumenCanal): Promise<void> {
     const nombreLimpio = nombre.trim().slice(0, MAX_NOMBRE);
     if (!nombreLimpio) return;
-    await onEntrar(resumen.canalId, nombreLimpio, resumen.cupo);
+    // El cupo y el estilo de un canal existente ya los fijo quien lo creo;
+    // aqui solo se propagan tal cual, no se vuelven a decidir.
+    await onEntrar(resumen.canalId, nombreLimpio, resumen.cupo ?? 2, resumen.estilo);
   }
 
   return (
@@ -122,10 +137,29 @@ export function MenuCupo({ onEntrar, error, ocupado }: PropsMenuCupo): JSX.Eleme
           </div>
         </fieldset>
 
+        <fieldset className="menu-cupo__estilo">
+          <legend className="pixel-label">ESTILO DE LA SALA</legend>
+          <div className="menu-cupo__estilo-opciones">
+            {OPCIONES_ESTILO.map((op) => (
+              <button
+                key={op.valor}
+                type="button"
+                className={`menu-cupo__estilo-card${estilo === op.valor ? " menu-cupo__estilo-card--activo" : ""}`}
+                onClick={() => setEstilo(op.valor)}
+              >
+                <span className="menu-cupo__estilo-titulo">{op.titulo}</span>
+                <span className="menu-cupo__estilo-desc">{op.descripcion}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
         <div className="pixel-panel pixel-panel--info menu-cupo__nota">
           CUPO 1 = MODO REALTIME: escribes en vivo, frase a frase.
           <br />
-          CUPO 2 O MAS = MODO SNAPSHOT: rondas de turno, todos escriben en paralelo.
+          CUPO 2 = MODO SNAPSHOT: rondas de turno, ambos escriben en paralelo.
+          <br />
+          El ESTILO lo fija quien crea la sala y ya no se puede cambiar despues.
         </div>
 
         {error && <p className="menu-cupo__error">{error}</p>}
@@ -148,6 +182,9 @@ export function MenuCupo({ onEntrar, error, ocupado }: PropsMenuCupo): JSX.Eleme
             return (
               <li key={c.canalId} className={`menu-cupo__canal${c.lleno ? " menu-cupo__canal--lleno" : ""}`}>
                 <span className="menu-cupo__canal-id">{c.canalId}</span>
+                <span className={`menu-cupo__badge-estilo menu-cupo__badge-estilo--${c.estilo}`}>
+                  {c.estilo === "vector" ? "VECTOR" : "PIXEL"}
+                </span>
                 <span className="menu-cupo__canal-info">
                   {c.dentro}/{cupoTexto} dentro &middot; {c.modo.toUpperCase()}
                 </span>

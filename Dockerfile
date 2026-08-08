@@ -43,7 +43,12 @@ WORKDIR /app
 # menos una fuente instalada, y Alpine no trae ninguna. Sin este paquete
 # ffmpeg codifica el video sin error alguno pero las leyendas salen
 # invisibles, que es justo lo que este proyecto va a exportar.
-RUN apk add --no-cache ffmpeg tini ttf-dejavu
+#
+# rsvg-convert: rasteriza a PNG los fotogramas de las salas "vector" (SVG
+# congelado por aplicarFotogramaSvg, ver videoExporter.ts) antes de pasarlos
+# a ffmpeg. Sin el, esos parrafos siguen exportando: videoExporter cae a la
+# rama pixel y avisa por consola, pero el video pierde el estilo vectorial.
+RUN apk add --no-cache ffmpeg tini ttf-dejavu rsvg-convert
 
 ENV NODE_ENV=production \
     PORT=3000 \

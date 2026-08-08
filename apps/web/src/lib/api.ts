@@ -59,10 +59,10 @@ export const api = {
 
   verCanal: (canalId: string) => pedir<ResumenCanal>(`/canales/${canalId}`),
 
-  crearCanal: (canalId: string, cupo: number | null) =>
+  crearCanal: (canalId: string, cupo: number, estilo: "pixel" | "vector") =>
     pedir<ResumenCanal>("/canales", {
       method: "POST",
-      body: JSON.stringify({ canalId, cupo }),
+      body: JSON.stringify({ canalId, cupo, estilo }),
     }),
 
   entrar: (canalId: string, nombre: string) =>

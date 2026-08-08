@@ -9,6 +9,15 @@ import type { EscenaSpec } from "@historia-paralela/escena";
 /** Un canal = una historia. El modo NO se elige: lo dicta la presencia. */
 export type ModoHistoria = "realtime" | "snapshot";
 
+/**
+ * Estilo visual de la sala, elegido por quien la crea:
+ *  - "pixel": motor de escenas en datos (EscenaSpec), turnos de 20s.
+ *  - "vector": DeepSeek dibuja cada escena en SVG estilo cuento infantil,
+ *    animado por el contrato data-anim. Generar un SVG tarda ~20s, asi que
+ *    estas salas usan turnos de 40s (TURNO_VECTOR_MS).
+ */
+export type EstiloEscena = "pixel" | "vector";
+
 export type EstadoHistoria =
   | "lobby" // creada, esperando gente
   | "en_curso" // corriendo el cronometro
@@ -38,15 +47,29 @@ export interface Parrafo {
    * La escena EN DATOS, no una imagen. La IA describe que hay y donde, y el
    * pixel art se dibuja por codigo (mismo motor en navegador y backend), lo
    * que ademas permite que la escena tenga movimiento.
+   *
+   * Presente SIEMPRE, tambien en salas vectoriales: es el plan B si el SVG
+   * no llega (el cliente y el video caen a pintarla con el motor pixel).
    */
   escena: EscenaSpec;
+  /**
+   * Solo en salas "vector": el dibujo SVG estilo cuento, YA saneado
+   * (sin scripts) y con las animaciones declaradas via atributos data-anim.
+   */
+  svg?: string;
   creadoEn: number;
 }
 
 export interface Historia {
   canalId: string;
-  /** Cupo maximo. null = ilimitado. Se valida SIEMPRE en servidor. */
+  /**
+   * Cupo maximo, 1 o 2. La experiencia esta pensada para duos: mas gente
+   * diluye los turnos y dispara el costo de IA. Se valida SIEMPRE en servidor
+   * (el tipo conserva null por compatibilidad, pero ya no se crea ilimitado).
+   */
   cupo: number | null;
+  /** Estilo visual elegido al crear la sala. */
+  estilo: EstiloEscena;
   creadorId: string;
   estado: EstadoHistoria;
   participantes: Participante[];
@@ -68,6 +91,7 @@ export interface Historia {
 export interface ResumenCanal {
   canalId: string;
   cupo: number | null;
+  estilo: EstiloEscena;
   dentro: number;
   lleno: boolean;
   estado: EstadoHistoria;
@@ -77,4 +101,6 @@ export interface ResumenCanal {
 export interface RespuestaDirector {
   narracion: string;
   escena: EscenaSpec;
+  /** Solo la produce el director vectorial; ya saneada. */
+  svg?: string;
 }

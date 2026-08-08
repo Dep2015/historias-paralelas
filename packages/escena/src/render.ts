@@ -1,5 +1,5 @@
 import { RGB, colorValido, type NombreColor } from "./paleta.js";
-import { ACENTO, LUZ, SOMBRA, SPRITES, spriteValido } from "./sprites.js";
+import { ACENTO, LUZ, SOMBRA, SPRITES, spriteValido, type SpriteDef } from "./sprites.js";
 import {
   ALTO,
   ANCHO,
@@ -66,6 +66,28 @@ function pintar(lienzo: Uint8ClampedArray, x: number, y: number, color: NombreCo
   lienzo[i] = rgb[0];
   lienzo[i + 1] = rgb[1];
   lienzo[i + 2] = rgb[2];
+  lienzo[i + 3] = 255;
+}
+
+/**
+ * Variante con brillo ajustado (factor 0..2). Existe para texturizar los
+ * terrenos al estilo de los RPG de GBA sin duplicar la paleta: el mismo color
+ * con motas mas oscuras y una linea de luz en la cresta se lee como cesped o
+ * roca con relieve, en vez de un relleno plano de un solo tono.
+ */
+function pintarSombreado(
+  lienzo: Uint8ClampedArray,
+  x: number,
+  y: number,
+  color: NombreColor,
+  factor: number,
+): void {
+  if (x < 0 || y < 0 || x >= ANCHO || y >= ALTO) return;
+  const rgb = RGB[color];
+  const i = (y * ANCHO + x) * CANALES;
+  lienzo[i] = Math.min(255, rgb[0] * factor);
+  lienzo[i + 1] = Math.min(255, rgb[1] * factor);
+  lienzo[i + 2] = Math.min(255, rgb[2] * factor);
   lienzo[i + 3] = 255;
 }
 
@@ -147,7 +169,14 @@ function linea(
 
 // --- Animacion --------------------------------------------------------------
 
-interface Desfase {
+/**
+ * Exportada: es el CONTRATO de animacion de todo el proyecto, no un detalle
+ * interno del rasterizador pixel. El modo vectorial (vector.ts) la reusa tal
+ * cual para congelar un SVG en un instante dado (aplicarFotogramaSvg) y para
+ * documentar el CSS que reproduce el mismo movimiento en el navegador
+ * (CSS_ANIMACIONES_VECTOR): una sola formula, dos motores de dibujo.
+ */
+export interface Desfase {
   dx: number;
   dy: number;
   escala: number;
@@ -157,7 +186,18 @@ interface Desfase {
 
 const SIN_DESFASE: Desfase = { dx: 0, dy: 0, escala: 1, visible: true, onda: 0 };
 
-function calcularDesfase(anim: Animacion | undefined, tMs: number): Desfase {
+/**
+ * Traduce una Animacion declarativa (tipo/amplitud/periodoMs/fase) al
+ * desplazamiento concreto en el instante tMs. Pura y determinista: mismo
+ * anim + mismo tMs = mismo Desfase, siempre, en cualquier maquina.
+ *
+ * Ahora la consume tambien el modo vectorial (vector.ts, va del lado del
+ * video/server): aplicarFotogramaSvg() llama a esta misma funcion para que un
+ * grupo SVG con data-anim="pulso" se congele en el mismo punto del ciclo que
+ * pintaria el motor pixel. Cambiar esta matematica cambia la animacion en los
+ * tres sitios a la vez (navegador pixel, video pixel, video vectorial).
+ */
+export function calcularDesfase(anim: Animacion | undefined, tMs: number): Desfase {
   if (!anim) return SIN_DESFASE;
 
   const periodo = anim.periodoMs && anim.periodoMs > 0 ? anim.periodoMs : 2000;
@@ -209,8 +249,34 @@ function dibujarTerreno(
         : Math.sin((x / 12 + tMs / 900) * Math.PI * 2) * amplitudOnda;
 
     const cima = Math.round(y + desfase.dy + balanceo - relieve * altura * aspereza);
-    for (let py = Math.max(0, cima); py < ALTO; py++) {
-      pintar(lienzo, x, py, color);
+    const inicio = Math.max(0, cima);
+
+    for (let py = inicio; py < ALTO; py++) {
+      // Texturizado estilo RPG de GBA en vez de relleno plano:
+      //  - la cresta lleva 1px de luz (le da volumen a la colina),
+      //  - motas oscuras deterministas salpican el relleno (cesped/roca),
+      //  - y el color se apaga gradualmente hacia abajo (profundidad).
+      // Todo sale de hash(x,y,semilla): cero estado, identico en el
+      // navegador y en los frames del video.
+      const profundidad = py - cima;
+
+      if (profundidad === 0) {
+        pintarSombreado(lienzo, x, py, color, 1.35);
+        continue;
+      }
+
+      const mota = hash(x * 7919 + py * 104729 + semilla * 31);
+      const oscurecerFondo = Math.max(0.62, 1 - profundidad * 0.012);
+
+      if (mota < 0.1) {
+        // Mota oscura: hierba alta / grieta. Mas frecuente cerca de la cresta.
+        pintarSombreado(lienzo, x, py, color, 0.55 * oscurecerFondo);
+      } else if (mota > 0.965 && profundidad < 6) {
+        // Brizna clara solo en la franja superior, como los tiles de cesped.
+        pintarSombreado(lienzo, x, py, color, 1.25);
+      } else {
+        pintarSombreado(lienzo, x, py, color, oscurecerFondo);
+      }
     }
   }
 }
@@ -225,7 +291,28 @@ function dibujarSprite(
   color: NombreColor,
   desfase: Desfase,
 ): void {
-  const filas = SPRITES[spriteValido(nombre)];
+  // Anotado como SpriteDef: el "satisfies" del catalogo estrecha cada entrada
+  // a su forma literal, y las que no declaran mini-paleta no tendrian el
+  // campo "colores" ni siquiera como opcional.
+  const sprite: SpriteDef = SPRITES[spriteValido(nombre)];
+  dibujarRejilla(lienzo, sprite.filas, sprite.colores, x, y, escala, espejo, color, desfase);
+}
+
+/**
+ * Rasteriza una rejilla de caracteres (sprite del catalogo o dibujo libre de
+ * la IA: misma gramatica, mismo camino de pintado, mismo resultado).
+ */
+function dibujarRejilla(
+  lienzo: Uint8ClampedArray,
+  filas: readonly string[],
+  minipaleta: SpriteDef["colores"],
+  x: number,
+  y: number,
+  escala: number,
+  espejo: boolean,
+  color: NombreColor,
+  desfase: Desfase,
+): void {
   const alto = filas.length;
   const primera = filas[0];
   if (!primera) return;
@@ -246,8 +333,11 @@ function dibujarSprite(
       const simbolo = fila[columna];
       if (!simbolo || simbolo === ".") continue;
 
+      // Prioridad: mini-paleta del sprite > simbolos globales > color de la IA.
+      const propio = minipaleta?.[simbolo];
       const colorPixel: NombreColor =
-        simbolo === "S" ? SOMBRA : simbolo === "L" ? LUZ : simbolo === "A" ? ACENTO : color;
+        propio ??
+        (simbolo === "S" ? SOMBRA : simbolo === "L" ? LUZ : simbolo === "A" ? ACENTO : color);
 
       rectangulo(
         lienzo,
@@ -272,16 +362,22 @@ function dibujarFondo(lienzo: Uint8ClampedArray, spec: EscenaSpec, tMs: number):
     const b = RGB[segundo];
     for (let y = 0; y < ALTO; y++) {
       const t = y / (ALTO - 1);
-      // Bandas de 3px: un degradado continuo delataria que no es pixel art.
-      const paso = Math.round((t * 12) / 1) / 12;
-      const r = a[0] + (b[0] - a[0]) * paso;
-      const g = a[1] + (b[1] - a[1]) * paso;
-      const az = a[2] + (b[2] - a[2]) * paso;
+      // Bandas discretas: un degradado continuo delataria que no es pixel art.
+      const banda = Math.round(t * 12);
+      const paso = banda / 12;
+      const pasoSiguiente = Math.min(12, banda + 1) / 12;
+      // Borde de banda: fila donde la banda va a cambiar en el proximo paso.
+      const bandaDeAbajo = Math.round(((y + 1) / (ALTO - 1)) * 12);
+      const enFrontera = bandaDeAbajo !== banda;
+
       for (let x = 0; x < ANCHO; x++) {
+        // Dithering de damero en la frontera entre bandas: es el sello del
+        // cielo de los RPG de GBA, y suaviza el corte sin dejar de ser pixel.
+        const mezcla = enFrontera && (x + y) % 2 === 0 ? pasoSiguiente : paso;
         const i = (y * ANCHO + x) * CANALES;
-        lienzo[i] = r;
-        lienzo[i + 1] = g;
-        lienzo[i + 2] = az;
+        lienzo[i] = a[0] + (b[0] - a[0]) * mezcla;
+        lienzo[i + 1] = a[1] + (b[1] - a[1]) * mezcla;
+        lienzo[i + 2] = a[2] + (b[2] - a[2]) * mezcla;
         lienzo[i + 3] = 255;
       }
     }
@@ -362,6 +458,21 @@ export function renderizarEscena(
         dibujarSprite(
           lienzo,
           capa.nombre,
+          capa.x,
+          capa.y,
+          capa.escala ?? 1,
+          capa.espejo ?? false,
+          color,
+          desfase,
+        );
+        break;
+      case "dibujo":
+        // Dibujo libre de la IA: misma tuberia que un sprite del catalogo,
+        // solo que las filas y la leyenda vienen en el propio spec.
+        dibujarRejilla(
+          lienzo,
+          capa.filas,
+          capa.leyenda,
           capa.x,
           capa.y,
           capa.escala ?? 1,

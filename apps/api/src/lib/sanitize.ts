@@ -5,7 +5,11 @@
  * El frontend ademas nunca usa dangerouslySetInnerHTML.
  */
 
-const LARGO_MAXIMO_FRASE = 500;
+/**
+ * 280, como un tweet, a proposito: frases cortas mantienen el ritmo del
+ * juego y acotan el contexto que se le manda a la IA en cada turno.
+ */
+const LARGO_MAXIMO_FRASE = 280;
 
 /**
  * Un caracter es "invisible" si no deja rastro en pantalla pero si viaja en la

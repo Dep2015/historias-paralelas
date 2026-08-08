@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { Parrafo } from "../lib/historia.js";
 import { EscenaPixel } from "./EscenaPixel.js";
+import { EscenaVector } from "./EscenaVector.js";
 
 /**
  * Reproductor tipo "cine": avanza solo por los parrafos para dar una
@@ -51,7 +52,11 @@ export function HistoriaFinal({ parrafos, razonFin }: PropsHistoriaFinal): JSX.E
   return (
     <div className="historia-final pixel-panel">
       <div className="historia-final__escena">
-        <EscenaPixel escena={actual?.escena ?? null} leyenda={actual?.narracion} pausado={enPausa} />
+        {actual?.svg ? (
+          <EscenaVector svg={actual.svg} leyenda={actual.narracion} />
+        ) : (
+          <EscenaPixel escena={actual?.escena ?? null} leyenda={actual?.narracion} pausado={enPausa} />
+        )}
       </div>
 
       <div className="historia-final__controles">

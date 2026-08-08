@@ -78,12 +78,34 @@ export interface FormaSprite extends Comun {
   espejo?: boolean;
 }
 
+/**
+ * Ultimo recurso: un dibujo pixel a pixel definido por la IA para algo que no
+ * existe en el catalogo (un robot, una sirena, un carruaje...).
+ *
+ * Usa la MISMA gramatica que los sprites del catalogo: filas de caracteres y
+ * una leyenda de colores con nombres de la paleta fija. Eso es lo que evita
+ * que degenere en ruido: la rejilla obliga a pensar en pixeles, la paleta
+ * cerrada obliga a la identidad visual del juego, y el saneador acota el
+ * tamano. "." es transparente; los demas caracteres los define la leyenda.
+ */
+export interface FormaDibujo extends Comun {
+  forma: "dibujo";
+  filas: string[];
+  /** Leyenda caracter -> nombre de color de la paleta. "#" usa "color". */
+  leyenda: Record<string, NombreColor>;
+  x: number;
+  y: number;
+  escala?: number;
+  espejo?: boolean;
+}
+
 export type Elemento =
   | FormaRect
   | FormaElipse
   | FormaLinea
   | FormaTerreno
-  | FormaSprite;
+  | FormaSprite
+  | FormaDibujo;
 
 export interface Fondo {
   tipo: "liso" | "degradado" | "estrellado";

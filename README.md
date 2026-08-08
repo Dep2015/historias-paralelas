@@ -54,12 +54,21 @@ Para exportar video necesitas `ffmpeg` en el PATH, o define `FFMPEG_PATH`.
 
 ## Como se juega
 
-### El cupo lo decide quien crea la sala
+### El cupo y el estilo los decide quien crea la sala
 
-En el menu eliges un ID de canal y **cuantas personas pueden entrar** (1, 2, 5,
-10 o ilimitado). El menu muestra en vivo cuantas hay dentro de cada sala. Si
-esta llena, no se puede entrar — y eso se verifica **en el servidor**, no solo
-en la interfaz.
+En el menu eliges un ID de canal, **cuantas personas pueden entrar (1 o 2 —
+la experiencia esta pensada para duos)** y el **estilo visual**:
+
+| Estilo | Como se dibuja | Turnos |
+|---|---|---|
+| `PIXEL` | Motor de escenas en datos, pixel art 16-bit animado | 20s |
+| `VECTORIAL` | La IA dibuja cada escena en SVG estilo cuento infantil, animada | 40s (dibujar tarda ~21s) |
+
+El menu muestra en vivo cuantas personas hay dentro de cada sala y su estilo.
+Si esta llena, no se puede entrar — verificado **en el servidor**.
+
+Las frases que escribes van **limitadas a 280 caracteres, como un tweet**:
+mantiene el ritmo del juego y acota el contexto que procesa la IA por turno.
 
 ### El modo no se elige: lo dicta la presencia
 

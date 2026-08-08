@@ -18,10 +18,32 @@ import { env } from "../lib/env.js";
  */
 
 const TIMEOUT_TEXTO_MS = 30_000;
+/**
+ * Un SVG completo son ~3500 tokens de salida y tarda ~21s medidos contra
+ * DeepSeek (ver TURNO_VECTOR_MS en lib/env.ts). El timeout generico de 30s se
+ * queda corto con ese margen real de red incluido, asi que cuando el llamador
+ * pide un maxTokens grande se usa una ventana mas holgada.
+ */
+const TIMEOUT_TEXTO_LARGO_MS = 60_000;
+const UMBRAL_MAX_TOKENS_TIMEOUT_LARGO = 4_000;
 
 interface MensajeChat {
   role: "system" | "user";
   content: string;
+}
+
+export interface OpcionesCompletar {
+  /**
+   * Si pedir la respuesta en json_object estricto. Default true (modo pixel:
+   * un objeto {narracion, escena}). El modo vector lo pone en false porque un
+   * SVG dentro de un string JSON es un infierno de escapes (cada comilla,
+   * cada salto de linea hay que escaparlo) y de tokens (el escapado infla el
+   * conteo); ahi es mas simple y barato pedir texto plano delimitado por
+   * marcadores y parsearlo a mano (ver director.ts).
+   */
+  json?: boolean;
+  /** Tope de tokens de la respuesta. Default env.IA_MAX_TOKENS. */
+  maxTokens?: number;
 }
 
 interface RespuestaChatIA {
@@ -40,10 +62,18 @@ function mensajeDeError(error: unknown): string {
 }
 
 /**
- * Pide una completion de chat en JSON estricto. Quien llama (director.ts) es
- * responsable de construir el prompt; aqui solo se habla con la red.
+ * Pide una completion de chat. Quien llama (director.ts) es responsable de
+ * construir el prompt; aqui solo se habla con la red.
  */
-export async function completarTexto(sistema: string, usuario: string): Promise<string> {
+export async function completarTexto(
+  sistema: string,
+  usuario: string,
+  opciones?: OpcionesCompletar,
+): Promise<string> {
+  const pedirJson = opciones?.json ?? true;
+  const maxTokens = opciones?.maxTokens ?? env.IA_MAX_TOKENS;
+  const timeoutMs = maxTokens > UMBRAL_MAX_TOKENS_TIMEOUT_LARGO ? TIMEOUT_TEXTO_LARGO_MS : TIMEOUT_TEXTO_MS;
+
   const mensajes: MensajeChat[] = [
     { role: "system", content: sistema },
     { role: "user", content: usuario },
@@ -62,9 +92,12 @@ export async function completarTexto(sistema: string, usuario: string): Promise<
       body: JSON.stringify({
         model: env.IA_MODELO_TEXTO,
         messages: mensajes,
-        response_format: { type: "json_object" },
+        // El modo vector pide texto plano (ver OpcionesCompletar.json): un
+        // SVG con comillas y saltos de linea dentro de un string JSON es
+        // fragil de escapar y caro de tokenizar.
+        ...(pedirJson ? { response_format: { type: "json_object" } } : {}),
         temperature: 1.0,
-        max_tokens: env.IA_MAX_TOKENS,
+        max_tokens: maxTokens,
         /**
          * DESACTIVAR EL RAZONAMIENTO NO ES OPCIONAL AQUI.
          *
@@ -91,7 +124,7 @@ export async function completarTexto(sistema: string, usuario: string): Promise<
         thinking: { type: env.IA_RAZONAMIENTO },
       }),
       // AbortSignal.timeout es nativo: no hace falta un controller manual.
-      signal: AbortSignal.timeout(TIMEOUT_TEXTO_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
     // Aqui caen tanto el timeout (AbortError) como fallos de red: para quien
@@ -126,7 +159,7 @@ export async function completarTexto(sistema: string, usuario: string): Promise<
 
     if (motivo === "length") {
       throw new Error(
-        `La IA agoto max_tokens (${env.IA_MAX_TOKENS}) sin emitir contenido: ` +
+        `La IA agoto max_tokens (${maxTokens}) sin emitir contenido: ` +
           `gasto ${razonamiento} caracteres razonando. Desactiva el razonamiento ` +
           `con IA_RAZONAMIENTO=disabled o sube IA_MAX_TOKENS.`,
       );

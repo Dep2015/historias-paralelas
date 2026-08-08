@@ -4,6 +4,43 @@ Cada entrada explica **por que** se tomo la decision, no solo cual fue.
 
 ---
 
+## 0. Duos, tweets y dos estilos de sala
+
+Tres decisiones de producto tomadas tras jugar con el sistema real:
+
+**Cupo maximo 2.** La experiencia esta afinada para duos: con mas gente los
+turnos se alargan (N x ventana), el costo de IA crece linealmente y la
+historia pierde hilo. El tope vive en la ruta (zod `max(2)`) y OTRA VEZ en el
+store (`crear()` acota), porque la UI es una sugerencia, no una defensa.
+
+**Frases de 280 caracteres, como un tweet.** No solo por ritmo: cada turno
+manda a la IA el acumulado + la frase nueva. Frases cortas = contexto corto =
+respuestas mas rapidas y baratas. El limite se aplica en zod, en el saneador
+(`LARGO_MAXIMO_FRASE`) y en el `maxLength` del input con contador visible.
+
+**Dos estilos de sala.** Quien crea la sala elige:
+- `pixel`: el motor de escenas en datos (punto 7). Turnos de 20s.
+- `vector`: DeepSeek dibuja cada escena como SVG estilo cuento infantil.
+  Turnos de 40s, porque generar un SVG son ~3500 tokens (~21s medidos) y en
+  una ventana de 20s la escena llegaria siempre un turno tarde.
+
+**La animacion vectorial es la "opcion B", por contrato.** El SVG que produce
+la IA es ESTATICO y prohibimos SMIL/scripts; los elementos vivos van
+etiquetados (`data-anim="flotar" data-amp data-periodo-ms data-fase`). En el
+navegador, un CSS inyectado (`CSS_ANIMACIONES_VECTOR`) los mueve; para el
+video, `aplicarFotogramaSvg()` congela cada frame con `calcularDesfase()` —
+LA MISMA formula que anima el motor pixel — y `rsvg-convert` lo rasteriza.
+La alternativa (Chromium headless capturando frames) daba animacion libre a
+cambio de ~300MB de imagen Docker y fragilidad; se descarto. El costo asumido:
+los movimientos son los 5 tipos del contrato, no animacion arbitraria — que es
+lo que el modelo usa en la practica de todos modos.
+
+Cada parrafo vectorial guarda TAMBIEN su `escena` pixel de respaldo: si el
+SVG falla o se sanea a nada, el cliente y el video caen al motor pixel y la
+partida no se entera.
+
+---
+
 ## 1. Duracion de la historia: parametrizada, por defecto 180s
 
 El prompt original menciona dos valores distintos: "Limite de tiempo: 2 minutos

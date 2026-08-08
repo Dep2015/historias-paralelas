@@ -39,6 +39,12 @@ const esquema = z.object({
 
   HISTORIA_DURACION_SEGUNDOS: z.coerce.number().int().positive().default(180),
   TURNO_DURACION_MS: z.coerce.number().int().positive().default(20_000),
+  /**
+   * Turno de las salas vectoriales. Generar un SVG completo son ~3500 tokens
+   * (~21s medidos contra DeepSeek); en 20s la escena llegaria siempre un
+   * turno tarde. 40s deja holgura sin matar el ritmo.
+   */
+  TURNO_VECTOR_MS: z.coerce.number().int().positive().default(40_000),
   TURNO_GRACIA_MS: z.coerce.number().int().nonnegative().default(3_000),
 
   REDIS_URL: z.string().optional(),

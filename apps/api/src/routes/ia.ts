@@ -4,7 +4,7 @@ import { asyncHandler, limitadorIA, requiereSesion, validarCuerpo } from "../lib
 import { sanearFrase } from "../lib/sanitize.js";
 import type { EstadoHistoria, Historia, ModoHistoria, Parrafo } from "../dominio/historia.js";
 import { historiaStore } from "../services/historiaStore.js";
-import { narrar } from "../services/director.js";
+import { narrar, narrarVector } from "../services/director.js";
 import {
   calcularModo,
   calcularVentana,
@@ -24,7 +24,9 @@ export const rutasIa = Router();
 
 const cuerpoNarrar = z.object({
   canal: z.string(),
-  nuevoMaterial: z.string().min(1).max(500),
+  // 280, como un tweet (ver LARGO_MAXIMO_FRASE en lib/sanitize.ts, que igual
+  // recorta a ese largo): frases cortas mantienen el ritmo del juego.
+  nuevoMaterial: z.string().min(1).max(280),
 });
 
 rutasIa.post(
@@ -65,10 +67,12 @@ rutasIa.post(
     // Solo las narraciones ya contadas forman el acumulado: el texto crudo de
     // cada quien no es "cuento", es la materia prima que el director convierte.
     const acumulado = historia.parrafos.map((p) => p.narracion);
-    // narrar() ya resuelve IA real vs simulada y nunca lanza: siempre devuelve
-    // narracion + escena, la escena EN DATOS (no una imagen) que se pinta por
-    // codigo en el cliente y en el exportador de video.
-    const resultado = await narrar(acumulado, textoOriginal);
+    // Ambas funciones resuelven IA real vs simulada y nunca lanzan: siempre
+    // devuelven narracion + escena (la escena EN DATOS, plan B pixel), y en
+    // salas vectoriales ademas el svg si la IA lo produjo y saneo bien.
+    const resultado = historia.estilo === "vector"
+      ? await narrarVector(acumulado, textoOriginal)
+      : await narrar(acumulado, textoOriginal);
 
     const parrafo = historiaStore.agregarParrafo(historia.canalId, {
       autorId: sesion.userId,
@@ -76,6 +80,7 @@ rutasIa.post(
       textoOriginal,
       narracion: resultado.narracion,
       escena: resultado.escena,
+      svg: resultado.svg,
     });
 
     if (!parrafo) {
@@ -102,6 +107,7 @@ export interface EstadoPublico {
   estado: EstadoHistoria;
   modo: ModoHistoria;
   cupo: number | null;
+  estilo: Historia["estilo"];
   dentro: number;
   participantes: ParticipantePublico[];
   parrafos: Parrafo[];
@@ -122,6 +128,7 @@ export function estadoPublico(historia: Historia): EstadoPublico {
     estado: historia.estado,
     modo: calcularModo(activos.length),
     cupo: historia.cupo,
+    estilo: historia.estilo,
     dentro: activos.length,
     participantes: historia.participantes.map((p) => ({
       userId: p.userId,

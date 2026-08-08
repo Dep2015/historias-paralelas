@@ -253,6 +253,27 @@ body::after {
   }
 }
 
+/* ---------- EscenaVector: lienzo SVG del modo VECTORIAL ---------- */
+
+.escena-vector {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 960 / 540;
+  overflow: hidden;
+  background: var(--color-negro);
+  border: var(--borde-grueso) solid var(--color-negro);
+}
+
+.escena-vector__img {
+  width: 100%;
+  height: auto;
+  display: block;
+  /* Al reves que .imagen-pixel (pixel art): esto es vectorial, tiene que
+     verse suave. La regla global "img, canvas { image-rendering: pixelated }"
+     de mas arriba se pisa aqui a proposito. */
+  image-rendering: auto;
+}
+
 /* ---------- Timer3min ---------- */
 
 .timer-pixel {
@@ -342,6 +363,49 @@ body::after {
   gap: var(--espacio-xs);
 }
 
+.menu-cupo__estilo {
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.menu-cupo__estilo-opciones {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--espacio-xs);
+}
+
+.menu-cupo__estilo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  background: var(--color-fondo);
+  border: var(--borde-fino) solid var(--color-cian);
+  box-shadow: var(--sombra-dura-chica);
+  color: var(--color-texto);
+  font-family: inherit;
+  padding: var(--espacio-sm);
+  cursor: pointer;
+}
+
+.menu-cupo__estilo-card--activo {
+  border-color: var(--color-amarillo);
+  outline: var(--borde-fino) solid var(--color-amarillo);
+  outline-offset: 2px;
+}
+
+.menu-cupo__estilo-titulo {
+  font-family: var(--fuente-titulo);
+  font-size: 0.7rem;
+  color: var(--color-cian);
+}
+
+.menu-cupo__estilo-desc {
+  font-size: 0.9rem;
+  opacity: 0.85;
+}
+
 .menu-cupo__nota {
   line-height: 1.5;
 }
@@ -388,6 +452,22 @@ body::after {
   font-family: var(--fuente-titulo);
   font-size: 0.6rem;
   color: var(--color-cian);
+}
+
+.menu-cupo__badge-estilo {
+  font-family: var(--fuente-titulo);
+  font-size: 0.55rem;
+  padding: 2px 6px;
+  border: var(--borde-fino) solid var(--color-negro);
+  color: var(--color-negro);
+}
+
+.menu-cupo__badge-estilo--pixel {
+  background: var(--color-cian);
+}
+
+.menu-cupo__badge-estilo--vector {
+  background: var(--color-amarillo);
 }
 
 .menu-cupo__canal-info {
@@ -535,6 +615,14 @@ body::after {
   gap: var(--espacio-xs);
 }
 
+.sala-chat__badge-vector {
+  margin: 0;
+  font-family: var(--fuente-titulo);
+  font-size: 0.55rem;
+  color: var(--color-amarillo);
+  letter-spacing: 0.03em;
+}
+
 .sala-chat__estado-turno {
   margin: 0;
   color: var(--color-cian);
@@ -555,10 +643,36 @@ body::after {
   margin: 0;
 }
 
+.sala-chat__pie-input {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--espacio-sm);
+}
+
 .sala-chat__firma {
   margin: 0;
   opacity: 0.7;
   font-size: 0.9rem;
+}
+
+/* Contador estilo tweet: verde/cian por defecto, amarillo cerca del limite,
+   magenta cuando ya casi no queda margen (ver umbrales en SalaChat.tsx). */
+.sala-chat__contador {
+  margin: 0;
+  opacity: 0.7;
+  font-family: var(--fuente-titulo);
+  font-size: 0.6rem;
+}
+
+.sala-chat__contador--advertencia {
+  opacity: 1;
+  color: var(--color-amarillo);
+}
+
+.sala-chat__contador--limite {
+  opacity: 1;
+  color: var(--color-magenta);
 }
 
 /* ---------- HistoriaFinal (cinema) ---------- */
@@ -656,6 +770,10 @@ body::after {
   .menu-cupo {
     grid-template-columns: 1.1fr 1fr;
     align-items: start;
+  }
+
+  .menu-cupo__estilo-opciones {
+    grid-template-columns: 1fr 1fr;
   }
 
   .pantalla-sala__cabecera {

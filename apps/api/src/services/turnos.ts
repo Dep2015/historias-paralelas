@@ -16,6 +16,15 @@ export function calcularModo(participantesActivos: number): ModoHistoria {
   return participantesActivos <= 1 ? "realtime" : "snapshot";
 }
 
+/**
+ * Duracion del turno segun el estilo de la sala: generar un SVG tarda ~21s
+ * (medido), asi que las salas vectoriales giran a 40s para que la escena
+ * llegue dentro de su propia ventana y no un turno tarde.
+ */
+export function duracionTurnoMs(historia: Historia): number {
+  return historia.estilo === "vector" ? env.TURNO_VECTOR_MS : env.TURNO_DURACION_MS;
+}
+
 export interface VentanaTurno {
   modo: ModoHistoria;
   /** Turno 0-based. -1 si la historia aun no arranco. */
@@ -68,9 +77,10 @@ export function calcularVentana(historia: Historia, ahora: number): VentanaTurno
   }
 
   const transcurrido = Math.max(0, ahora - historia.iniciadaEn);
-  const indice = Math.floor(transcurrido / env.TURNO_DURACION_MS);
-  const iniciaEn = historia.iniciadaEn + indice * env.TURNO_DURACION_MS;
-  const terminaEn = iniciaEn + env.TURNO_DURACION_MS;
+  const turnoMs = duracionTurnoMs(historia);
+  const indice = Math.floor(transcurrido / turnoMs);
+  const iniciaEn = historia.iniciadaEn + indice * turnoMs;
+  const terminaEn = iniciaEn + turnoMs;
 
   // El orden gira sobre la lista de activos: si sobra tiempo tras pasar todos,
   // se vuelve al #1 y la historia sigue creciendo hasta que se acabe el reloj.

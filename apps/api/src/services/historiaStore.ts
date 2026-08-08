@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { env } from "../lib/env.js";
 import type {
   EstadoHistoria,
+  EstiloEscena,
   Historia,
   Parrafo,
   Participante,
@@ -32,13 +33,23 @@ class HistoriaStore {
   private readonly historias = new Map<string, Historia>();
 
   /** Crea la sala. El creador fija el cupo y ese cupo manda en el servidor. */
-  crear(canalId: string, cupo: number | null, creadorId: string): Historia {
+  crear(
+    canalId: string,
+    cupo: number | null,
+    creadorId: string,
+    estilo: EstiloEscena = "pixel",
+  ): Historia {
     const existente = this.historias.get(canalId);
     if (existente) return existente;
 
+    // Tope duro de 2 aunque la ruta ya lo valide: el store es la ultima
+    // linea, y un "ilimitado" heredado (null) tambien se normaliza aqui.
+    const cupoAcotado = cupo === null ? 2 : Math.max(1, Math.min(2, cupo));
+
     const historia: Historia = {
       canalId,
-      cupo,
+      cupo: cupoAcotado,
+      estilo,
       creadorId,
       estado: "lobby",
       participantes: [],
@@ -68,6 +79,7 @@ class HistoriaStore {
     return {
       canalId: historia.canalId,
       cupo: historia.cupo,
+      estilo: historia.estilo,
       dentro,
       lleno: historia.cupo !== null && dentro >= historia.cupo,
       estado: historia.estado,

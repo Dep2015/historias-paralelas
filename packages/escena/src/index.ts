@@ -18,5 +18,11 @@ export {
   type Fondo,
   type TipoAnimacion,
 } from "./spec.js";
-export { crearLienzo, renderizarEscena } from "./render.js";
+export { crearLienzo, renderizarEscena, calcularDesfase, type Desfase } from "./render.js";
 export { sanearEscena } from "./sanear.js";
+export {
+  sanearSvg,
+  incrustarAnimacionesSvg,
+  aplicarFotogramaSvg,
+  CSS_ANIMACIONES_VECTOR,
+} from "./vector.js";

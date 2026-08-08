@@ -7,6 +7,7 @@ import {
   ALTO,
   ANCHO,
   ESCENA_POR_DEFECTO,
+  aplicarFotogramaSvg,
   crearLienzo,
   renderizarEscena,
   type EscenaSpec,
@@ -69,6 +70,41 @@ const FPS_VIDEO = 12;
  * resolucion de video estandar (720p) sin redondeos raros.
  */
 const ESCALA_PNG = 8;
+
+/**
+ * rsvg-convert: solo lo necesitan los parrafos de salas "vector" (los que
+ * traen Parrafo.svg). No vive en env.ts a proposito (ese modulo no es parte
+ * de este cambio): se lee process.env directamente, igual de opcional que
+ * FFMPEG_PATH, con el mismo patron de "binario configurable, valor por
+ * defecto razonable".
+ */
+const RSVG_PATH = process.env.RSVG_PATH ?? "rsvg-convert";
+
+/** Cuanto se espera un solo frame de rsvg-convert antes de darlo por perdido. */
+const TIMEOUT_RSVG_MS = 10_000;
+
+/**
+ * FPS de la rama vectorial: MAS BAJO que FPS_VIDEO (8 en vez de 12) a
+ * proposito. Cada frame pixel es una funcion en el mismo proceso (barata);
+ * cada frame vectorial es un spawn ENTERO de rsvg-convert (caro: arrancar un
+ * proceso, leer el SVG, rasterizar, escribir el PNG). A FPS_VIDEO literal,
+ * 20s de parrafo ya son 240 spawns en serie; con varios parrafos vectoriales
+ * eso dispara el tiempo de exportacion muy por encima de lo razonable. 8fps
+ * sigue leyendose fluido para ilustraciones de cuento (menos frenetico que el
+ * pixel art animado, que es lo que pide el estilo) y recorta un tercio los
+ * spawns.
+ *
+ * Es una decision POR EXPORTACION, no por parrafo: FFmpeg solo admite un
+ * unico -framerate para toda la secuencia de PNG de entrada (el demuxer
+ * image2 no soporta cambiar el fps a mitad de stream), y los 20s por parrafo
+ * del SRT son fijos. Si se mezclaran 12fps de un parrafo pixel con 8fps de
+ * otro vectorial en el mismo video, cada segmento se reproduciria a una
+ * velocidad real distinta de los 20s que promete el subtitulo. Por eso, si
+ * CUALQUIER parrafo de la historia trae svg, TODA la historia (incluidos los
+ * parrafos sin svg, que igual van por la rama pixel) se renderiza a
+ * FPS_VECTOR. Ver calcularFpsExport().
+ */
+const FPS_VECTOR = 8;
 
 /**
  * Techo de PNGs en disco antes de recortar el FPS automaticamente. A
@@ -134,7 +170,7 @@ export async function exportarHistoria(historia: Historia): Promise<ResultadoExp
 
   try {
     const binario = env.FFMPEG_PATH ?? "ffmpeg";
-    const fps = calcularFps(historia.parrafos.length);
+    const fps = calcularFpsExport(historia.parrafos);
     const totalFrames = await renderizarFrames(historia.parrafos, dir, fps);
 
     await fs.writeFile(path.join(dir, NOMBRE_SRT), construirSrt(historia.parrafos), "utf8");
@@ -254,6 +290,18 @@ function calcularFps(cantidadParrafos: number): number {
 }
 
 /**
+ * FPS efectivo de LA EXPORTACION ENTERA (no por parrafo, ver el porque en el
+ * comentario de FPS_VECTOR): si algun parrafo trae svg (sala vectorial, o una
+ * sala pixel con algun turno vectorial suelto), toda la historia se renderiza
+ * a FPS_VECTOR. Si ninguno trae svg, el comportamiento es exactamente el de
+ * siempre (calcularFps sin tocar).
+ */
+function calcularFpsExport(parrafos: readonly Parrafo[]): number {
+  const esVectorial = parrafos.some((parrafo) => typeof parrafo.svg === "string" && parrafo.svg.length > 0);
+  return esVectorial ? FPS_VECTOR : calcularFps(parrafos.length);
+}
+
+/**
  * Guarda de tipo minima antes de rasterizar. Si el parrafo no trae una
  * escena reconocible (dato corrupto, historia guardada antes de este cambio,
  * etc.) renderizarEscena() pincharia leyendo spec.fondo.color de undefined;
@@ -300,25 +348,153 @@ async function renderizarFrames(
   const framesPorParrafo = DURACION_PARRAFO_S * fps;
   const msPorFrame = 1000 / fps;
   let indiceGlobal = 0;
+  // Compartido entre parrafos: el aviso de rsvg roto se muestra UNA vez por
+  // exportacion, no una vez por parrafo vectorial que falle.
+  const avisoRsvg = { mostrado: false };
 
   for (const parrafo of parrafos) {
-    const spec = escenaSegura(parrafo.escena);
+    let escritoPorVector = false;
 
-    // tMs arranca en 0 en cada parrafo: es lo mismo que hace el navegador al
-    // entrar a una escena nueva, y es lo que garantiza que una animacion
-    // (flotar, pulso, parpadeo...) se vea exactamente igual en el video que
-    // en vivo, en vez de arrastrar el reloj acumulado de toda la historia.
-    for (let indiceLocal = 0; indiceLocal < framesPorParrafo; indiceLocal++) {
-      const tMs = indiceLocal * msPorFrame;
-      renderizarEscena(spec, tMs, lienzo);
-
-      const png = codificarPng(lienzo, ANCHO, ALTO, ESCALA_PNG);
-      await fs.writeFile(path.join(dir, nombreFrame(indiceGlobal)), png);
-      indiceGlobal++;
+    if (typeof parrafo.svg === "string" && parrafo.svg.length > 0) {
+      escritoPorVector = await renderizarParrafoVectorial(
+        parrafo.svg,
+        dir,
+        indiceGlobal,
+        framesPorParrafo,
+        msPorFrame,
+        avisoRsvg,
+      );
     }
+
+    if (!escritoPorVector) {
+      // RAMA PIXEL, sin cambios: mismo motor de siempre. Tambien es el
+      // fallback si el parrafo traia svg pero rsvg-convert fallo a mitad de
+      // camino (ver renderizarParrafoVectorial): se pisan los mismos nombres
+      // de archivo que ya se hubieran escrito.
+      const spec = escenaSegura(parrafo.escena);
+
+      // tMs arranca en 0 en cada parrafo: es lo mismo que hace el navegador al
+      // entrar a una escena nueva, y es lo que garantiza que una animacion
+      // (flotar, pulso, parpadeo...) se vea exactamente igual en el video que
+      // en vivo, en vez de arrastrar el reloj acumulado de toda la historia.
+      for (let indiceLocal = 0; indiceLocal < framesPorParrafo; indiceLocal++) {
+        const tMs = indiceLocal * msPorFrame;
+        renderizarEscena(spec, tMs, lienzo);
+
+        const png = codificarPng(lienzo, ANCHO, ALTO, ESCALA_PNG);
+        await fs.writeFile(path.join(dir, nombreFrame(indiceGlobal + indiceLocal)), png);
+      }
+    }
+
+    indiceGlobal += framesPorParrafo;
   }
 
   return indiceGlobal;
+}
+
+/**
+ * RAMA VECTOR de un parrafo: congela el SVG del parrafo en cada tMs con
+ * aplicarFotogramaSvg (la MISMA calcularDesfase que usa el motor pixel, ver
+ * packages/escena/src/render.ts) y convierte cada fotograma a PNG con
+ * rsvg-convert, un frame a la vez y EN SERIE (mas simple y predecible que
+ * paralelizar spawns de un binario externo).
+ *
+ * Devuelve false ante el primer frame que falle (binario ausente, timeout,
+ * SVG que rsvg no pueda leer): renderizarFrames() cae entonces a la rama
+ * pixel para el parrafo COMPLETO (no solo el frame que fallo), reescribiendo
+ * los mismos nombres de archivo. La exportacion nunca muere por esto: en el
+ * peor caso, ese turno se ve en pixel art en vez de vectorial.
+ */
+async function renderizarParrafoVectorial(
+  svgSaneado: string,
+  dir: string,
+  indiceGlobalInicio: number,
+  framesPorParrafo: number,
+  msPorFrame: number,
+  avisoRsvg: { mostrado: boolean },
+): Promise<boolean> {
+  for (let indiceLocal = 0; indiceLocal < framesPorParrafo; indiceLocal++) {
+    const indiceGlobal = indiceGlobalInicio + indiceLocal;
+    const tMs = indiceLocal * msPorFrame;
+    const rutaSvg = path.join(dir, nombreFrameSvgTemporal(indiceGlobal));
+    const rutaPng = path.join(dir, nombreFrame(indiceGlobal));
+
+    try {
+      const fotograma = aplicarFotogramaSvg(svgSaneado, tMs);
+      await fs.writeFile(rutaSvg, fotograma, "utf8");
+      await ejecutarRsvg(RSVG_PATH, rutaSvg, rutaPng, TIMEOUT_RSVG_MS);
+    } catch (error) {
+      if (!avisoRsvg.mostrado) {
+        avisoRsvg.mostrado = true;
+        const mensaje = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `[export] rsvg-convert fallo ("${RSVG_PATH}"), se usa la rama pixel para los parrafos vectoriales de esta exportacion: ${mensaje}`,
+        );
+      }
+      return false;
+    } finally {
+      // El .svg intermedio no aporta nada una vez convertido (o si fallo la
+      // conversion): fuera siempre, exito o error.
+      await fs.rm(rutaSvg, { force: true }).catch(() => {});
+    }
+  }
+
+  return true;
+}
+
+function nombreFrameSvgTemporal(indiceGlobal: number): string {
+  return `frame-${String(indiceGlobal).padStart(5, "0")}.svg`;
+}
+
+/**
+ * Lanza rsvg-convert para un unico frame y espera a que termine. Rechaza si
+ * el binario no existe, no responde en TIMEOUT_RSVG_MS o sale con codigo de
+ * error; renderizarParrafoVectorial() decide que hacer con ese rechazo.
+ */
+function ejecutarRsvg(
+  binario: string,
+  rutaSvgEntrada: string,
+  rutaPngSalida: string,
+  timeoutMs: number,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proceso = spawn(binario, [
+      "-w",
+      String(ANCHO * ESCALA_PNG),
+      "-h",
+      String(ALTO * ESCALA_PNG),
+      "--background-color",
+      "#0b0d1a",
+      "-o",
+      rutaPngSalida,
+      rutaSvgEntrada,
+    ]);
+    let stderr = "";
+
+    const agotado = setTimeout(() => {
+      proceso.kill("SIGKILL");
+      reject(new Error(`rsvg-convert no respondio en ${timeoutMs}ms y fue terminado.`));
+    }, timeoutMs);
+    agotado.unref();
+
+    proceso.stderr.on("data", (fragmento: Buffer) => {
+      stderr += fragmento.toString("utf8");
+    });
+
+    proceso.on("error", (error) => {
+      clearTimeout(agotado);
+      reject(new Error(`No se pudo lanzar rsvg-convert ("${binario}"): ${error.message}`));
+    });
+
+    proceso.on("close", (codigo) => {
+      clearTimeout(agotado);
+      if (codigo === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(`rsvg-convert termino con codigo ${codigo}: ${stderr.slice(-500)}`));
+    });
+  });
 }
 
 /**
